@@ -5,6 +5,7 @@ import random
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -19,6 +20,67 @@ from tiny_llm.data.tokenizer import BPETokenizer, train_tokenizer
 from tiny_llm.training.dataset import PackedTokenDataset, prepare_tokens
 
 ProgressCallback = Callable[[dict[str, float | int | str]], None]
+
+
+def _checkpoint_path(config: ExperimentConfig) -> Path:
+    return PROJECT_ROOT / "artifacts" / "checkpoints" / config.training.model_name / "latest.pt"
+
+
+def _save_checkpoint(
+    path: Path,
+    model,
+    optimizer: AdamW,
+    scheduler,
+    config: ExperimentConfig,
+    step: int,
+) -> None:
+    """Atomically save everything needed to continue an interrupted run."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    state: dict[str, Any] = {
+        "version": 1,
+        "step": step,
+        "config": config.model_dump(mode="json"),
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "scheduler": scheduler.state_dict(),
+        "python_rng": random.getstate(),
+        "numpy_rng": np.random.get_state(),
+        "torch_rng": torch.get_rng_state(),
+    }
+    if torch.cuda.is_available():
+        state["cuda_rng"] = torch.cuda.get_rng_state_all()
+    torch.save(state, temporary)
+    temporary.replace(path)
+
+
+def _load_checkpoint(
+    path: Path,
+    model,
+    optimizer: AdamW,
+    scheduler,
+    config: ExperimentConfig,
+    device: torch.device,
+) -> int:
+    """Restore a trusted local checkpoint and return its completed training step."""
+    state = torch.load(path, map_location=device, weights_only=False)
+    saved_config = ExperimentConfig.model_validate(state["config"])
+    if saved_config.training.model_name != config.training.model_name:
+        raise ValueError("Checkpoint model name does not match the requested experiment")
+    if saved_config.model != config.model or saved_config.data != config.data:
+        raise ValueError("Checkpoint model or data configuration does not match the experiment")
+    if saved_config.tokenizer != config.tokenizer:
+        raise ValueError("Checkpoint tokenizer configuration does not match the experiment")
+
+    model.load_state_dict(state["model"])
+    optimizer.load_state_dict(state["optimizer"])
+    scheduler.load_state_dict(state["scheduler"])
+    random.setstate(state["python_rng"])
+    np.random.set_state(state["numpy_rng"])
+    torch.set_rng_state(state["torch_rng"].cpu())
+    if "cuda_rng" in state and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(state["cuda_rng"])
+    return int(state["step"])
 
 
 def resolve_device(requested: str) -> torch.device:
@@ -55,7 +117,11 @@ def evaluate(model, loader: DataLoader, device: torch.device, batches: int) -> f
     return sum(losses) / max(1, len(losses))
 
 
-def train(config: ExperimentConfig, callback: ProgressCallback | None = None) -> Path:
+def train(
+    config: ExperimentConfig,
+    callback: ProgressCallback | None = None,
+    resume: bool = True,
+) -> Path:
     """Fetch data, train tokenizer/model, evaluate, and publish a named checkpoint."""
     report = callback or (lambda event: print(event, flush=True))
     _seed_everything(config.training.seed)
@@ -113,10 +179,31 @@ def train(config: ExperimentConfig, callback: ProgressCallback | None = None) ->
         return 0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * progress))
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, learning_rate)
+    checkpoint_path = _checkpoint_path(config)
+    start_step = 0
+    if resume and checkpoint_path.exists():
+        start_step = _load_checkpoint(
+            checkpoint_path, model, optimizer, scheduler, config, device
+        )
+        report(
+            {
+                "stage": "resume",
+                "step": start_step,
+                "message": f"Continuing from {checkpoint_path}",
+            }
+        )
+    elif not resume and checkpoint_path.exists():
+        report(
+            {
+                "stage": "training",
+                "message": "Ignoring existing checkpoint because resume is disabled",
+            }
+        )
+
     iterator = iter(train_loader)
     model.train()
     started = time.monotonic()
-    for step in range(1, config.training.max_steps + 1):
+    for step in range(start_step + 1, config.training.max_steps + 1):
         optimizer.zero_grad(set_to_none=True)
         accumulated_loss = 0.0
         for _ in range(config.training.gradient_accumulation):
@@ -147,6 +234,30 @@ def train(config: ExperimentConfig, callback: ProgressCallback | None = None) ->
                     "elapsed_seconds": round(time.monotonic() - started, 1),
                 }
             )
+
+        if step % config.training.save_interval == 0:
+            _save_checkpoint(checkpoint_path, model, optimizer, scheduler, config, step)
+            report({"stage": "checkpoint", "step": step, "path": str(checkpoint_path)})
+
+    if (
+        config.training.max_steps > start_step
+        and config.training.max_steps % config.training.save_interval
+    ):
+        _save_checkpoint(
+            checkpoint_path,
+            model,
+            optimizer,
+            scheduler,
+            config,
+            config.training.max_steps,
+        )
+        report(
+            {
+                "stage": "checkpoint",
+                "step": config.training.max_steps,
+                "path": str(checkpoint_path),
+            }
+        )
 
     output = ModelCatalog(PROJECT_ROOT / "artifacts" / "models").save(
         model, config, tokenizer_path, count

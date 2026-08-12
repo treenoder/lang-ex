@@ -31,14 +31,19 @@ def init_config(
 
 
 @app.command("train")
-def train_command(config: Annotated[Path, typer.Argument(exists=True, readable=True)]) -> None:
+def train_command(
+    config: Annotated[Path, typer.Argument(exists=True, readable=True)],
+    resume: Annotated[
+        bool, typer.Option("--resume/--no-resume", help="Continue from the latest checkpoint")
+    ] = True,
+) -> None:
     """Train from an experiment JSON file and save the named model."""
     experiment = ExperimentConfig.model_validate_json(config.read_text(encoding="utf-8"))
 
     def display(event: dict) -> None:
         typer.echo(json.dumps(event, ensure_ascii=False))
 
-    path = train(experiment, callback=display)
+    path = train(experiment, callback=display, resume=resume)
     typer.secho(f"Saved model to {path}", fg=typer.colors.GREEN)
 
 

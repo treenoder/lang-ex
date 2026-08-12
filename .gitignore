@@ -9,4 +9,5 @@ data/cache/**
 !data/cache/.gitkeep
 artifacts/models/**
 !artifacts/models/.gitkeep
-
+artifacts/checkpoints/**
+!artifacts/checkpoints/.gitkeep

@@ -57,6 +57,12 @@ Open `experiment.json` to adjust dataset size, context, batch size, or training 
 uv run tiny-llm train experiment.json
 ```
 
+Training writes a resumable checkpoint every `save_interval` steps under
+`artifacts/checkpoints/<model-name>/latest.pt`. Running the same command again resumes
+automatically. Use `--no-resume` to deliberately start over; the first new save interval
+then replaces the old checkpoint. Copy both `artifacts/checkpoints/` and `data/cache/`
+when moving an interrupted run between machines.
+
 For a quick pipeline smoke test, reduce each source's `max_documents` to `100`, `max_steps` to `2`,
 `eval_interval` to `1`, and `eval_batches` to `1`. This verifies plumbing, not model quality.
 Useful text generation requires far more tokens and steps. The included
