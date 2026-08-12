@@ -14,15 +14,21 @@ configuration, external dataset caching, BPE training, memory-mapped token stora
 validation/perplexity, cosine learning-rate decay, gradient accumulation and clipping,
 safe tensor checkpoints, a model catalog, CLI inference, and a FastAPI web UI.
 
-## Hardware reality
+## Hardware acceleration
 
-This machine is an Intel Mac with an AMD Radeon Pro 5500. Current PyTorch macOS wheels are
-arm64-only, so the project pins PyTorch 2.2.2: the final release that provides a CPython
-3.12 x86_64 macOS wheel. The MPS path is not available for this AMD GPU, and the official
-optimized `mamba-ssm` package requires Linux, NVIDIA, and CUDA. The defaults therefore use
-CPU and stay intentionally small. Start with `micro`; even small models can take hours or
-days to train well on a laptop CPU. The pure-PyTorch Mamba reference scan is especially
-educational but slower than fused CUDA kernels.
+Training defaults to `device: "auto"`: CUDA is preferred when available, followed by Apple
+MPS and then CPU. Windows installs use the project's CUDA 12.1 PyTorch wheel, so a supported
+NVIDIA GPU is selected automatically. Confirm the environment before a long run:
+
+```powershell
+uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+Set `device` to `"cuda"` in the experiment configuration if CUDA should be required instead
+of allowing a CPU fallback. Intel Macs with an AMD GPU remain CPU-only: MPS is unavailable
+for that hardware, and PyTorch 2.2.2 is pinned because it is the final CPython 3.12 x86_64
+macOS release. The pure-PyTorch Mamba reference scan works on CUDA but remains slower than
+specialized fused kernels.
 
 ## Set up
 
@@ -40,6 +46,9 @@ Create a configuration with a chosen name, architecture, and approximate size pr
 
 ```bash
 uv run tiny-llm init-config --name my-story-model --architecture transformer --size micro
+```
+```bash
+uv run tiny-llm init-config --name trans-small --architecture transformer --size xlarge
 ```
 
 Open `experiment.json` to adjust dataset size, context, batch size, or training steps, then:
@@ -72,6 +81,8 @@ uv sync --extra kaggle
 ```bash
 uv run tiny-llm models
 uv run tiny-llm chat my-story-model --prompt "Once upon a time"
+```
+```bash
 uv run tiny-llm web
 ```
 

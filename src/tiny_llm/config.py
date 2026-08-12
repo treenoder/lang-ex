@@ -87,7 +87,7 @@ class ModelConfig(BaseModel):
 
 class TrainConfig(BaseModel):
     model_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-    size: Literal["micro", "tiny", "small"] = "tiny"
+    size: Literal["micro", "tiny", "small", "medium", "large", "xlarge"] = "tiny"
     batch_size: int = Field(8, ge=1)
     gradient_accumulation: int = Field(4, ge=1)
     max_steps: int = Field(2_000, ge=1)
@@ -109,18 +109,24 @@ class ExperimentConfig(BaseModel):
     training: TrainConfig
 
 
-# Laptop-oriented presets. Exact parameter counts are calculated after construction
-# and written to metadata; names are intentionally approximate, not marketing labels.
+# Exact parameter counts are calculated after construction and written to metadata;
+# names are intentionally approximate, not marketing labels.
 SIZE_PRESETS: dict[str, dict[str, dict[str, int]]] = {
     "transformer": {
         "micro": {"d_model": 128, "n_layers": 4, "n_heads": 4},
         "tiny": {"d_model": 256, "n_layers": 6, "n_heads": 8},
         "small": {"d_model": 384, "n_layers": 8, "n_heads": 8},
+        "medium": {"d_model": 512, "n_layers": 12, "n_heads": 8},
+        "large": {"d_model": 768, "n_layers": 16, "n_heads": 12},
+        "xlarge": {"d_model": 1024, "n_layers": 24, "n_heads": 16},
     },
     "mamba": {
         "micro": {"d_model": 96, "n_layers": 4},
         "tiny": {"d_model": 192, "n_layers": 6},
         "small": {"d_model": 320, "n_layers": 8},
+        "medium": {"d_model": 512, "n_layers": 12},
+        "large": {"d_model": 768, "n_layers": 16},
+        "xlarge": {"d_model": 1024, "n_layers": 24},
     },
 }
 
