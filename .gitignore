@@ -1,0 +1,12 @@
+.idea/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
+.DS_Store
+data/cache/**
+!data/cache/.gitkeep
+artifacts/models/**
+!artifacts/models/.gitkeep
+

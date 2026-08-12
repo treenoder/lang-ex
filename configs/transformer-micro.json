@@ -1,0 +1,39 @@
+{
+  "data": {
+    "sources": [
+      {"name": "wikipedia", "provider": "huggingface", "dataset": "Salesforce/wikitext", "subset": "wikitext-103-raw-v1", "split": "train", "text_column": "text", "format": "text", "max_documents": 20000, "streaming": true},
+      {"name": "question-answering", "provider": "huggingface", "dataset": "rajpurkar/squad", "subset": null, "split": "train", "text_column": "text", "format": "question_answer", "max_documents": 20000, "streaming": true},
+      {"name": "books", "provider": "huggingface", "dataset": "jxie/bookcorpus", "subset": null, "split": "train", "text_column": "text", "format": "text", "max_documents": 20000, "streaming": true}
+    ]
+  },
+  "tokenizer": {"vocab_size": 8000, "min_frequency": 2},
+  "model": {
+    "architecture": "transformer",
+    "vocab_size": 8000,
+    "context_length": 256,
+    "d_model": 128,
+    "n_layers": 4,
+    "dropout": 0.1,
+    "n_heads": 4,
+    "ff_multiplier": 4.0,
+    "d_state": 16,
+    "d_conv": 4,
+    "expand": 2
+  },
+  "training": {
+    "model_name": "story-transformer-micro",
+    "size": "micro",
+    "batch_size": 8,
+    "gradient_accumulation": 4,
+    "max_steps": 2000,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.1,
+    "warmup_steps": 100,
+    "eval_interval": 100,
+    "eval_batches": 10,
+    "save_interval": 500,
+    "seed": 42,
+    "device": "auto",
+    "num_workers": 0
+  }
+}
